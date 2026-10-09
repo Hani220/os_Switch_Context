@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Context switching simulator</title>
+<style>
+:root{
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+  --bg:#faf9f5;--card:#ffffff;--soft:#f1efe8;
+  --text:#2c2c2a;--text2:#5f5e5a;--muted:#888780;
+  --border:rgba(0,0,0,.12);--border2:rgba(0,0,0,.28);
+  --acc-bg:#e6f1fb;--acc-fg:#0c447c;--acc-line:#185fa5;
+  --warn-bg:#faeeda;--warn-fg:#633806;
+  --p0-bg:#eeedfe;--p0-fg:#3c3489;--p0-line:#534ab7;
+  --p1-bg:#e1f5ee;--p1-fg:#085041;--p1-line:#0f6e56;
+  --p2-bg:#faece7;--p2-fg:#712b13;--p2-line:#993c1d;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --sans:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#1c1c1a;--card:#262624;--soft:#2f2f2c;
+    --text:#ecebe6;--text2:#b4b2a9;--muted:#888780;
+    --border:rgba(255,255,255,.14);--border2:rgba(255,255,255,.3);
+    --acc-bg:#0c447c;--acc-fg:#b5d4f4;--acc-line:#85b7eb;
+    --warn-bg:#633806;--warn-fg:#fac775;
+    --p0-bg:#3c3489;--p0-fg:#cecbf6;--p0-line:#afa9ec;
+    --p1-bg:#085041;--p1-fg:#9fe1cb;--p1-line:#5dcaa5;
+    --p2-bg:#712b13;--p2-fg:#f5c4b3;--p2-line:#f0997b;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#1c1c1a;--card:#262624;--soft:#2f2f2c;
+  --text:#ecebe6;--text2:#b4b2a9;--muted:#888780;
+  --border:rgba(255,255,255,.14);--border2:rgba(255,255,255,.3);
+  --acc-bg:#0c447c;--acc-fg:#b5d4f4;--acc-line:#85b7eb;
+  --warn-bg:#633806;--warn-fg:#fac775;
+  --p0-bg:#3c3489;--p0-fg:#cecbf6;--p0-line:#afa9ec;
+  --p1-bg:#085041;--p1-fg:#9fe1cb;--p1-line:#5dcaa5;
+  --p2-bg:#712b13;--p2-fg:#f5c4b3;--p2-line:#f0997b;
+}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*,*::before,*::after{box-sizing:inherit}
+body{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans);font-size:16px;line-height:1.6}
+main{max-width:720px;margin:0 auto;padding:28px 16px 48px}
+h1{font-size:26px;font-weight:500;margin:0 0 6px;line-height:1.25}
+.lead{color:var(--text2);margin:0 0 24px;max-width:60ch}
+h2{font-size:13px;font-weight:500;color:var(--text2);margin:0 0 8px}
+button{font:inherit;font-size:14px;color:var(--text);background:transparent;border:1px solid var(--border2);border-radius:8px;padding:8px 14px;cursor:pointer;min-height:40px}
+button:hover{background:var(--soft)}
+button:active{transform:scale(.98)}
+button:focus-visible,input:focus-visible{outline:2px solid var(--acc-line);outline-offset:2px}
+input[type=range]{accent-color:var(--acc-line);width:120px}
+.row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.row label{font-size:14px;color:var(--text2)}
+.val{font-size:14px;font-weight:500;min-width:56px}
+.procs{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;margin:0 0 14px}
+.pc{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px 14px}
+.pc.run{border:2px solid var(--acc-line);padding:11px 13px}
+.badge{font-size:12px;padding:2px 8px;border-radius:6px;font-weight:500}
+.reg{display:flex;justify-content:space-between;font-size:13px;font-family:var(--mono);padding:2px 0}
+.reg span:first-child{color:var(--text2)}
+.cpu{background:var(--soft);border-radius:12px;padding:12px 14px;margin:0 0 18px}
+.cpu .big{font-family:var(--mono);font-size:17px;font-weight:500;margin-top:2px}
+.cpu .k{font-size:13px;color:var(--text2);font-family:var(--mono)}
+.cell{flex:1 1 0;min-width:0;height:28px;border-radius:2px}
+.stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:0 0 18px}
+.stat{background:var(--soft);border-radius:8px;padding:12px}
+.stat p{margin:0;font-size:13px;color:var(--text2);line-height:1.4}
+.stat b{display:block;font-size:24px;font-weight:500;margin-top:2px}
+#log{background:var(--soft);border-radius:8px;padding:10px 12px;font-family:var(--mono);font-size:12px;line-height:1.7;height:152px;overflow:hidden;display:flex;flex-direction:column;justify-content:flex-end}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--text2);margin:0 0 18px}
+.sw{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+footer{margin-top:28px;font-size:13px;color:var(--muted);max-width:60ch}
+@media (max-width:480px){.stats{grid-template-columns:1fr}.stat b{font-size:22px}}
+@media (prefers-reduced-motion:reduce){button:active{transform:none}}
+</style>
+</head>
+<body>
+<main>
+<h1>Context switching simulator</h1>
+<p class="lead">One CPU core, three processes. Watch the OS save one process's registers into its PCB, pick the next process, and load that process's registers back.</p>
+
+<div class="row" style="margin:0 0 14px">
+  <button id="play">Play</button>
+  <button id="step">Step</button>
+  <button id="io">Running process asks for I/O</button>
+  <button id="reset">Reset</button>
+</div>
+<div class="row" style="margin:0 0 20px">
+  <label for="q">Time slice</label><input type="range" id="q" min="2" max="10" step="1" value="5"><span class="val" id="qv">5 ticks</span>
+  <label for="sp" style="margin-left:10px">Speed</label><input type="range" id="sp" min="1" max="5" step="1" value="3">
+</div>
+
+<div class="procs" id="procs"></div>
+
+<div class="cpu">
+  <div class="row" style="justify-content:space-between;margin-bottom:8px">
+    <h2 style="margin:0;color:var(--text)">CPU registers (live)</h2>
+    <span id="owner" class="badge">idle</span>
+  </div>
+  <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px">
+    <div><div class="k">PC</div><div class="big" id="cpc">-</div></div>
+    <div><div class="k">SP</div><div class="big" id="csp">-</div></div>
+    <div><div class="k">R1</div><div class="big" id="cr1">-</div></div>
+  </div>
+</div>
+
+<h2>CPU timeline (one cell is one tick, newest on the right)</h2>
+<div id="tl" style="display:flex;gap:2px;margin:0 0 8px" aria-label="CPU timeline"></div>
+<div class="legend" id="legend"></div>
+
+<div class="stats">
+  <div class="stat"><p>Context switches</p><b id="s1">0</b></div>
+  <div class="stat"><p>Overhead ticks</p><b id="s2">0</b></div>
+  <div class="stat"><p>Time lost to switching</p><b id="s3">0%</b></div>
+</div>
+
+<h2>OS log</h2>
+<div id="log" aria-live="polite"></div>
+
+<footer>Numbers are simplified for teaching. A real context switch takes microseconds and a typical time slice is a few milliseconds.</footer>
+</main>
+
+<script>
+var NAMES=['Chrome','VS Code','Spotify'];
+var N=40;
+var P,cpu,cur,sw,slice,Q,tl,log,switches,ovh,ticks,ioReq,timer,playing;
+function $(id){return document.getElementById(id)}
+function hx(n){return '0x'+n.toString(16).toUpperCase()}
+function init(){
+  P=[0,1,2].map(function(i){return {pc:0x1000*(i+1),sp:0x7FF0-i*0x100,r1:0,state:'ready',io:0}});
+  cpu={pc:0,sp:0,r1:0};
+  cur=-1;sw={phase:'pick'};slice=0;tl=[];log=[];switches=0;ovh=0;ticks=0;ioReq=false;
+  addLog('Boot: all processes ready, scheduler picks first');
+  render();
+}
+function addLog(t){log.push(t);if(log.length>7)log.shift()}
+function pickNext(from){
+  for(var k=1;k<=3;k++){var j=(from+k+3)%3;if(P[j].state==='ready')return j}
+  return -1;
+}
+function tick(){
+  ticks++;
+  P.forEach(function(p,i){if(p.state==='waiting'){p.io--;if(p.io<=0){p.state='ready';addLog('I/O done: '+NAMES[i]+' is ready again')}}});
+  if(sw){
+    if(sw.phase==='save'){
+      var p=P[cur];p.pc=cpu.pc;p.sp=cpu.sp;p.r1=cpu.r1;
+      if(p.state==='running')p.state='ready';
+      addLog('Save '+NAMES[cur]+' context into its PCB (PC='+hx(p.pc)+')');
+      tl.push('o');ovh++;switches++;sw={phase:'load'};
+    }else{
+      var nx=pickNext(cur<0?-1:cur);
+      if(nx<0){addLog('Scheduler: nobody is ready, CPU idles');tl.push('i');cur=-1;sw={phase:'pick'};}
+      else{
+        var q=P[nx];cpu={pc:q.pc,sp:q.sp,r1:q.r1};q.state='running';cur=nx;slice=Q;
+        addLog('Scheduler picks '+NAMES[nx]+', load its context (PC='+hx(q.pc)+')');
+        tl.push('o');ovh++;sw=null;
+      }
+    }
+  }else if(cur>=0){
+    if(ioReq){
+      ioReq=false;P[cur].state='waiting';P[cur].io=6;
+      addLog(NAMES[cur]+' requests I/O and blocks (before using its slice)');
+      sw={phase:'save'};tl.push(cur);
+    }else{
+      cpu.pc+=4;cpu.r1+=7;slice--;tl.push(cur);
+      if(slice<=0){addLog('Time slice of '+NAMES[cur]+' expired: timer interrupt');sw={phase:'save'}}
+    }
+  }else{
+    var nx2=pickNext(-1);
+    if(nx2>=0){sw={phase:'load'}}
+    tl.push('i');
+  }
+  if(tl.length>N)tl.shift();
+  render();
+}
+function render(){
+  var h='';
+  for(var i=0;i<3;i++){
+    var p=P[i],run=p.state==='running';
+    var st=run?['Running','var(--acc-bg)','var(--acc-fg)']:p.state==='waiting'?['Waiting I/O','var(--warn-bg)','var(--warn-fg)']:['Ready','var(--soft)','var(--text2)'];
+    h+='<div class="pc'+(run?' run':'')+'"><div class="row" style="justify-content:space-between;margin-bottom:8px;gap:6px"><span style="font-weight:500;color:var(--p'+i+'-fg);background:var(--p'+i+'-bg);padding:2px 8px;border-radius:6px;font-size:14px">'+NAMES[i]+'</span><span class="badge" style="background:'+st[1]+';color:'+st[2]+'">'+st[0]+(p.state==='waiting'?' ('+p.io+')':'')+'</span></div>'
+    +'<div style="font-size:12px;color:var(--muted);margin-bottom:4px">PCB (saved context)</div>'
+    +'<div class="reg"><span>PC</span><span>'+hx(p.pc)+'</span></div><div class="reg"><span>SP</span><span>'+hx(p.sp)+'</span></div><div class="reg"><span>R1</span><span>'+p.r1+'</span></div>'
+    +(run?'<div style="font-size:12px;color:var(--acc-fg);margin-top:6px">Live copy is in the CPU</div>':'')+'</div>';
+  }
+  $('procs').innerHTML=h;
+  var ow=$('owner');
+  if(cur>=0&&(!sw||sw.phase!=='load')){
+    ow.textContent=sw&&sw.phase==='save'?NAMES[cur]+' (being saved)':NAMES[cur];
+    ow.style.background='var(--p'+cur+'-bg)';ow.style.color='var(--p'+cur+'-fg)';
+    $('cpc').textContent=hx(cpu.pc);$('csp').textContent=hx(cpu.sp);$('cr1').textContent=cpu.r1;
+  }else{
+    ow.textContent=sw?'switching':'idle';ow.style.background='var(--card)';ow.style.color='var(--text2)';
+    $('cpc').textContent='-';$('csp').textContent='-';$('cr1').textContent='-';
+  }
+  var t='';
+  for(var k=0;k<N-tl.length;k++)t+='<div class="cell" style="background:var(--soft)"></div>';
+  tl.forEach(function(c){
+    if(c==='o')t+='<div class="cell" style="background:var(--muted)"></div>';
+    else if(c==='i')t+='<div class="cell" style="background:var(--soft);border:1px dashed var(--border2)"></div>';
+    else t+='<div class="cell" style="background:var(--p'+c+'-bg);border:1px solid var(--p'+c+'-line)"></div>';
+  });
+  $('tl').innerHTML=t;
+  var lg='';
+  for(var j=0;j<3;j++)lg+='<span><span class="sw" style="background:var(--p'+j+'-bg);border:1px solid var(--p'+j+'-line)"></span>'+NAMES[j]+'</span>';
+  lg+='<span><span class="sw" style="background:var(--muted)"></span>Switch overhead</span>';
+  $('legend').innerHTML=lg;
+  $('s1').textContent=Math.round(switches/2);
+  $('s2').textContent=ovh;
+  $('s3').textContent=ticks?Math.round(ovh*100/ticks)+'%':'0%';
+  $('log').innerHTML=log.map(function(l,i){return '<div style="color:'+(i===log.length-1?'var(--text)':'var(--text2)')+'">'+l+'</div>'}).join('');
+}
+function setPlay(on){
+  playing=on;clearInterval(timer);
+  $('play').textContent=on?'Pause':'Play';
+  if(on){var ms=[900,600,400,250,120][$('sp').value-1];timer=setInterval(tick,ms)}
+}
+$('play').onclick=function(){setPlay(!playing)};
+$('step').onclick=function(){setPlay(false);tick()};
+$('io').onclick=function(){if(cur>=0&&!sw){ioReq=true;addLog('You: '+NAMES[cur]+' will request I/O on the next tick');render()}};
+$('reset').onclick=function(){setPlay(false);init()};
+$('sp').oninput=function(){if(playing)setPlay(true)};
+$('q').oninput=function(){Q=+this.value;$('qv').textContent=Q+' ticks'};
+Q=5;playing=false;init();
+</script>
+</body>
+</html>
